@@ -5,15 +5,120 @@ from typing import Optional
 import base64, os
 from datetime import datetime, timezone
 import logging
+import hashlib
+import json
 
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None  # type: ignore
 
+try:
+    import redis
+except Exception:
+    redis = None  # type: ignore
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ---------- REDIS SETUP ----------
+redis_client = None
+if redis:
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        # Test connection
+        redis_client.ping()
+        logger.info(f"Redis connected successfully: {redis_url}")
+    except Exception as e:
+        logger.warning(f"Redis connection failed: {e}. Caching disabled.")
+        redis_client = None
+
+# ---------- CACHE UTILITIES ----------
+# Cache statistics
+cache_stats = {
+    "hits": 0,
+    "misses": 0,
+    "sets": 0,
+    "errors": 0
+}
+
+def get_cache_key(prefix: str, *args) -> str:
+    """Generate a cache key from prefix and arguments."""
+    key_parts = [prefix] + [str(arg).lower().strip() for arg in args]
+    return ":".join(key_parts)
+
+def get_content_hash(content: str) -> str:
+    """Generate SHA256 hash of content for cache keys."""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
+
+async def get_from_cache(key: str) -> Optional[str]:
+    """Get value from Redis cache."""
+    if not redis_client:
+        return None
+    try:
+        value = redis_client.get(key)
+        if value:
+            cache_stats["hits"] += 1
+            logger.info(f"Cache HIT: {key[:50]}...")
+            return value
+        cache_stats["misses"] += 1
+        logger.info(f"Cache MISS: {key[:50]}...")
+        return None
+    except Exception as e:
+        cache_stats["errors"] += 1
+        logger.error(f"Cache get error: {e}")
+        return None
+
+async def set_cache(key: str, value: str, ttl_seconds: int = 3600) -> bool:
+    """Set value in Redis cache with TTL."""
+    if not redis_client:
+        return False
+    try:
+        redis_client.setex(key, ttl_seconds, value)
+        cache_stats["sets"] += 1
+        logger.info(f"Cache SET: {key[:50]}... (TTL: {ttl_seconds}s)")
+        return True
+    except Exception as e:
+        cache_stats["errors"] += 1
+        logger.error(f"Cache set error: {e}")
+        return False
+
+async def get_cache_info() -> dict:
+    """Get Redis cache information and statistics."""
+    cache_info = {
+        "redis_connected": redis_client is not None,
+        "cache_stats": cache_stats.copy(),
+        "redis_info": None
+    }
+    
+    if redis_client:
+        try:
+            # Get Redis server info
+            redis_info = redis_client.info()
+            cache_info["redis_info"] = {
+                "redis_version": redis_info.get("redis_version"),
+                "used_memory_human": redis_info.get("used_memory_human"),
+                "connected_clients": redis_info.get("connected_clients"),
+                "total_commands_processed": redis_info.get("total_commands_processed"),
+                "keyspace_hits": redis_info.get("keyspace_hits", 0),
+                "keyspace_misses": redis_info.get("keyspace_misses", 0),
+                "uptime_in_seconds": redis_info.get("uptime_in_seconds")
+            }
+            
+            # Calculate hit rate
+            total_requests = cache_stats["hits"] + cache_stats["misses"]
+            if total_requests > 0:
+                cache_info["hit_rate"] = round(cache_stats["hits"] / total_requests * 100, 2)
+            else:
+                cache_info["hit_rate"] = 0.0
+                
+        except Exception as e:
+            logger.error(f"Error getting Redis info: {e}")
+            cache_info["redis_error"] = str(e)
+    
+    return cache_info
 
 # lyricsgenius library removed - using direct API calls instead
 
@@ -59,6 +164,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 def healthz():
     return {"status": "ok"}
 
+@app.get("/cache/health")
+async def cache_health():
+    """Get cache health status and statistics."""
+    return await get_cache_info()
+
 @app.post("/analyze", response_model=SongResponse)
 async def analyze(req: SongRequest):
     try:
@@ -83,13 +193,23 @@ async def analyze(req: SongRequest):
 
 # ---- Lyrics fetching with Genius ----
 async def fetch_lyrics(artist: str, title: str) -> Optional[str]:
+    # Check cache first
+    cache_key = get_cache_key("lyrics", artist, title)
+    cached_lyrics = await get_from_cache(cache_key)
+    if cached_lyrics:
+        return cached_lyrics
+    
     genius_token = os.getenv("GENIUS_API_TOKEN")
     if not genius_token:
         demo = {
             ("Metallica", "Nothing Else Matters"): "[Demo lyrics - configure GENIUS_API_TOKEN for real lyrics]",
             ("Океан Ельзи", "Без бою"): "[Demo lyrics - configure GENIUS_API_TOKEN for real lyrics]",
         }
-        return demo.get((artist, title))
+        lyrics = demo.get((artist, title))
+        if lyrics:
+            # Cache demo lyrics for 24 hours
+            await set_cache(cache_key, lyrics, 24 * 3600)
+        return lyrics
     try:
         import httpx, re
         search_query = f"{title} {artist}"
@@ -124,12 +244,17 @@ async def fetch_lyrics(artist: str, title: str) -> Optional[str]:
                 lyrics = re.sub(r'\[.*?\]', '', lyrics)
                 lyrics = re.sub(r'\n+', '\n', lyrics).strip()
                 if lyrics:
+                    # Cache lyrics for 7 days (lyrics don't change)
+                    await set_cache(cache_key, lyrics, 7 * 24 * 3600)
                     return lyrics
             lyrics_pattern = r'"lyrics":"([^"]*)"'
             lyrics_match = re.search(lyrics_pattern, html_content)
             if lyrics_match:
                 lyrics = lyrics_match.group(1).replace('\\n', '\n').replace('\\"', '"')
-                return lyrics.strip()
+                if lyrics.strip():
+                    # Cache lyrics for 7 days 
+                    await set_cache(cache_key, lyrics.strip(), 7 * 24 * 3600)
+                    return lyrics.strip()
         return None
     except Exception as e:
         logger.error(f"Error fetching lyrics: {e}", exc_info=True)
@@ -137,6 +262,13 @@ async def fetch_lyrics(artist: str, title: str) -> Optional[str]:
 
 # ---- Summarization ----
 async def summarize_lyrics(lyrics: str, artist: str, title: str, language: str = "en") -> str:
+    # Check cache first using lyrics hash + language
+    lyrics_hash = get_content_hash(lyrics)
+    cache_key = get_cache_key("summary", lyrics_hash, language)
+    cached_summary = await get_from_cache(cache_key)
+    if cached_summary:
+        return cached_summary
+    
     api_key = os.getenv("OPENAI_API_KEY")
     if OpenAI and api_key:
         try:
@@ -159,7 +291,10 @@ async def summarize_lyrics(lyrics: str, artist: str, title: str, language: str =
                 temperature=0.4,
                 max_tokens=500,
             )
-            return chat.choices[0].message.content.strip()
+            summary = chat.choices[0].message.content.strip()
+            # Cache summary for 7 days
+            await set_cache(cache_key, summary, 7 * 24 * 3600)
+            return summary
         except Exception as e:
             logger.error(f"Error summarizing lyrics: {e}", exc_info=True)
 
@@ -174,9 +309,19 @@ async def summarize_lyrics(lyrics: str, artist: str, title: str, language: str =
 
 # ---- AI Image generation ----
 async def generate_song_artwork(artist: str, title: str, summary: str, style: str) -> str:
+    # Check cache first using summary content hash + style for unique key
+    summary_hash = get_content_hash(summary)
+    cache_key = get_cache_key("image", artist, title, summary_hash, style.lower())
+    cached_image_url = await get_from_cache(cache_key)
+    if cached_image_url:
+        return cached_image_url
+    
     api_key = os.getenv("OPENAI_API_KEY")
     if not OpenAI or not api_key:
-        return make_svg_data_uri(artist, title, style)
+        fallback_svg = make_svg_data_uri(artist, title, style)
+        # Cache fallback SVG for 1 hour to avoid regenerating
+        await set_cache(cache_key, fallback_svg, 3600)
+        return fallback_svg
     try:
         client = OpenAI(api_key=api_key)
         style_descriptions = {
@@ -207,10 +352,16 @@ async def generate_song_artwork(artist: str, title: str, summary: str, style: st
             quality="standard",
             n=1,
         )
-        return response.data[0].url
+        image_url = response.data[0].url
+        # Cache DALL-E image URLs for 30 days (images are expensive to generate)
+        await set_cache(cache_key, image_url, 30 * 24 * 3600)
+        return image_url
     except Exception as e:
         logger.error(f"Error generating image: {e}", exc_info=True)
-        return make_svg_data_uri(artist, title, style)
+        fallback_svg = make_svg_data_uri(artist, title, style)
+        # Cache fallback for shorter time when API fails
+        await set_cache(cache_key, fallback_svg, 1800)  # 30 minutes
+        return fallback_svg
 
 # ---- Fallback SVG generation ----
 def make_svg_data_uri(artist: str, title: str, style: str) -> str:

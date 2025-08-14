@@ -1,12 +1,29 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   pyai:                     
     build: ./py-ai
     image: song-meaning-py:latest
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GENIUS_API_TOKEN=${GENIUS_API_TOKEN:-}
+      - REDIS_URL=redis://redis:6379/0
     ports:
       - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 10s
@@ -23,3 +40,6 @@ services:
     depends_on:
       pyai:                             
         condition: service_healthy
+
+volumes:
+  redis_data:
