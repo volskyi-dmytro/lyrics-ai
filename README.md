@@ -17,6 +17,7 @@
 - **AI Artwork Generation** with DALL-E 3
 - **10+ Artistic Styles** (vintage, psychedelic, minimalist, etc.)
 - **Scrollable Content** for detailed analyses
+- **📊 Real-time Progress Tracking** with animated progress bar
 - **⚡ Redis Caching System** for optimal performance and cost reduction
 
 ### 🎨 AI-Generated Artwork Styles
@@ -114,8 +115,8 @@ docker-compose up -d
 
 ## 📋 API Reference
 
-### Analyze Song
-Analyzes a song's lyrics and generates artwork.
+### Analyze Song (Legacy)
+Analyzes a song's lyrics and generates artwork synchronously.
 
 ```http
 POST /api/analyze
@@ -135,6 +136,47 @@ Content-Type: application/json
   "summary": "Detailed song analysis...",
   "imageUrl": "https://oaidalleapiprodscus.blob.core.windows.net/..."
 }
+```
+
+### Start Song Analysis (Recommended)
+Start background analysis with real-time progress tracking.
+
+```http
+POST /api/analyze/start
+Content-Type: application/json
+
+{
+  "artist": "Queen",
+  "title": "Bohemian Rhapsody",
+  "style": "vintage",
+  "language": "uk"
+}
+```
+
+**Response:**
+```json
+{
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Real-time Progress Stream
+Connect to Server-Sent Events for live progress updates.
+
+```http
+GET /api/progress/{request_id}
+Accept: text/event-stream
+```
+
+**Example Events:**
+```
+data: {"progress": 10, "status": "Searching lyrics database..."}
+
+data: {"progress": 30, "status": "Lyrics found!"}
+
+data: {"progress": 70, "status": "Analysis complete!"}
+
+data: {"progress": 100, "status": "Analysis complete!", "result": {...}}
 ```
 
 ### Parameters
@@ -249,6 +291,31 @@ Our intelligent caching system dramatically improves performance and reduces API
 - **💰 Cost Reduction**: Significant savings on API calls
 - **📊 Monitoring**: Real-time cache metrics via `/cache/health`
 - **🔄 Graceful Degradation**: Works seamlessly when Redis is unavailable
+
+## 📊 Real-time Progress Tracking
+
+### Live Processing Updates
+Watch your song analysis happen in real-time with our animated progress bar:
+
+#### 🔄 **Progress Phases**
+1. **5-30%**: "Searching for lyrics..." → "Lyrics found!"
+2. **35-70%**: "Analyzing song meaning..." → "Analysis complete!"  
+3. **75-95%**: "Generating AI artwork..." → "Artwork ready!"
+4. **100%**: "Analysis complete!"
+
+#### ⚡ **Technical Features**
+- **Server-Sent Events (SSE)** for real-time updates every 300ms
+- **Background processing** with detailed progress phases
+- **Smooth CSS animations** with gradient progress bars
+- **Status messages** keep users informed during 10-30 second analysis
+- **Cache awareness** - faster progress on repeated requests
+- **Error handling** with automatic connection management
+
+#### 🎪 **User Experience**
+- **No more "black box" feeling** - see exactly what's happening
+- **Engaging visual feedback** during longer operations
+- **Professional progress indicators** similar to modern web apps
+- **Demo mode** with instant progress simulation
 
 ## 📊 Performance
 

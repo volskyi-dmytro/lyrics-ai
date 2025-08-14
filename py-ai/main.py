@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import base64, os
@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 import logging
 import hashlib
 import json
+import asyncio
+import uuid
 
 try:
     from openai import OpenAI
@@ -34,6 +36,41 @@ if redis:
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}. Caching disabled.")
         redis_client = None
+
+# ---------- PROGRESS TRACKING ----------
+# Store progress data (in production, use Redis or database)
+progress_store = {}
+
+class ProgressTracker:
+    def __init__(self, request_id: str):
+        self.request_id = request_id
+        self.progress = 0
+        self.status = "Starting..."
+        self.start_time = datetime.now()
+        self.result = None
+        self.error = None
+        progress_store[request_id] = self
+    
+    async def update(self, progress: int, status: str):
+        self.progress = min(progress, 100)
+        self.status = status
+        logger.info(f"Progress {self.request_id}: {progress}% - {status}")
+    
+    def to_dict(self):
+        data = {
+            "request_id": self.request_id,
+            "progress": self.progress,
+            "status": self.status,
+            "elapsed_time": (datetime.now() - self.start_time).total_seconds()
+        }
+        if self.result:
+            data["result"] = {
+                "summary": self.result.summary,
+                "imageUrl": self.result.imageUrl
+            }
+        if self.error:
+            data["error"] = self.error
+        return data
 
 # ---------- CACHE UTILITIES ----------
 # Cache statistics
@@ -147,6 +184,9 @@ class SongResponse(BaseModel):
     summary: str
     imageUrl: str
 
+class AnalyzeStartResponse(BaseModel):
+    request_id: str
+
 # ---------- GLOBAL EXCEPTION HANDLER ----------
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -169,8 +209,70 @@ async def cache_health():
     """Get cache health status and statistics."""
     return await get_cache_info()
 
+@app.get("/progress/{request_id}")
+async def progress_stream(request_id: str):
+    """Server-Sent Events endpoint for progress updates."""
+    async def event_generator():
+        # Send initial connection event
+        yield f"data: {json.dumps({'status': 'Connected to progress stream', 'progress': 0})}\n\n"
+        
+        sent_progress_steps = set()  # Track which progress steps we've sent
+        
+        while True:
+            if request_id in progress_store:
+                tracker = progress_store[request_id]
+                current_progress = tracker.progress
+                
+                # Always send current state
+                data = json.dumps(tracker.to_dict())
+                yield f"data: {data}\n\n"
+                
+                # Track progress milestones to ensure they're sent
+                progress_key = f"{current_progress}:{tracker.status}"
+                sent_progress_steps.add(progress_key)
+                
+                # If completed, send final event and cleanup
+                if tracker.progress >= 100:
+                    yield f"data: {json.dumps({'status': 'completed', 'progress': 100})}\n\n"
+                    # Clean up after 30 seconds
+                    await asyncio.sleep(30)
+                    progress_store.pop(request_id, None)
+                    break
+            else:
+                yield f"data: {json.dumps({'error': 'Request not found'})}\n\n"
+                break
+            
+            await asyncio.sleep(0.3)  # More frequent updates - every 300ms
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
+@app.post("/analyze/start", response_model=AnalyzeStartResponse)
+async def analyze_start(req: SongRequest):
+    """Start song analysis and return request ID for progress tracking."""
+    artist = sanitize_input(req.artist)
+    title = sanitize_input(req.title)
+    if not artist or not title:
+        raise HTTPException(status_code=400, detail="Artist and title are required.")
+    
+    request_id = str(uuid.uuid4())
+    
+    # Start analysis in background
+    asyncio.create_task(analyze_song_background(request_id, req))
+    
+    return AnalyzeStartResponse(request_id=request_id)
+
 @app.post("/analyze", response_model=SongResponse)
 async def analyze(req: SongRequest):
+    """Legacy synchronous analyze endpoint (kept for compatibility)."""
     try:
         artist = sanitize_input(req.artist)
         title = sanitize_input(req.title)
@@ -191,7 +293,51 @@ async def analyze(req: SongRequest):
         logger.error(f"Error in /analyze endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
+async def analyze_song_background(request_id: str, req: SongRequest):
+    """Background task for song analysis with progress tracking."""
+    tracker = ProgressTracker(request_id)
+    
+    try:
+        artist = sanitize_input(req.artist)
+        title = sanitize_input(req.title)
+        
+        # Step 1: Fetch lyrics (0-30%)
+        await tracker.update(5, "Searching for lyrics...")
+        lyrics = await fetch_lyrics_with_progress(artist, title, tracker)
+        if not lyrics:
+            await tracker.update(100, f"Error: Lyrics not found for '{artist} - {title}'")
+            return
+        
+        # Step 2: Generate summary (30-70%)
+        await tracker.update(35, "Analyzing song meaning...")
+        summary = await summarize_lyrics_with_progress(lyrics, artist, title, req.language or "en", tracker)
+        
+        # Step 3: Generate artwork (70-100%)
+        await tracker.update(75, "Generating AI artwork...")
+        image_url = await generate_song_artwork_with_progress(artist, title, summary, req.style or "album cover", tracker)
+        
+        await tracker.update(100, "Analysis complete!")
+        
+        # Store final result in tracker
+        tracker.result = SongResponse(summary=summary, imageUrl=image_url)
+        
+    except Exception as e:
+        logger.error(f"Background analysis error: {e}", exc_info=True)
+        await tracker.update(100, f"Error: {str(e)}")
+
 # ---- Lyrics fetching with Genius ----
+async def fetch_lyrics_with_progress(artist: str, title: str, tracker: ProgressTracker) -> Optional[str]:
+    """Fetch lyrics with progress updates."""
+    await tracker.update(10, "Searching lyrics database...")
+    await asyncio.sleep(0.5)  # Small delay to show progress
+    
+    result = await fetch_lyrics(artist, title)
+    
+    if result:
+        await tracker.update(30, "Lyrics found!")
+        await asyncio.sleep(0.3)  # Brief pause before next step
+    return result
+
 async def fetch_lyrics(artist: str, title: str) -> Optional[str]:
     # Check cache first
     cache_key = get_cache_key("lyrics", artist, title)
@@ -261,6 +407,20 @@ async def fetch_lyrics(artist: str, title: str) -> Optional[str]:
         return None
 
 # ---- Summarization ----
+async def summarize_lyrics_with_progress(lyrics: str, artist: str, title: str, language: str, tracker: ProgressTracker) -> str:
+    """Summarize lyrics with progress updates."""
+    await tracker.update(40, "Processing with AI...")
+    await asyncio.sleep(0.8)  # Show processing step
+    
+    await tracker.update(60, "Generating analysis...")
+    await asyncio.sleep(0.5)  # Show generation step
+    
+    result = await summarize_lyrics(lyrics, artist, title, language)
+    
+    await tracker.update(70, "Analysis complete!")
+    await asyncio.sleep(0.3)  # Brief pause
+    return result
+
 async def summarize_lyrics(lyrics: str, artist: str, title: str, language: str = "en") -> str:
     # Check cache first using lyrics hash + language
     lyrics_hash = get_content_hash(lyrics)
@@ -308,6 +468,20 @@ async def summarize_lyrics(lyrics: str, artist: str, title: str, language: str =
     )
 
 # ---- AI Image generation ----
+async def generate_song_artwork_with_progress(artist: str, title: str, summary: str, style: str, tracker: ProgressTracker) -> str:
+    """Generate artwork with progress updates."""
+    await tracker.update(80, "Creating AI artwork...")
+    await asyncio.sleep(0.8)  # Show creation step
+    
+    await tracker.update(90, "Finalizing image...")
+    await asyncio.sleep(0.5)  # Show finalization step
+    
+    result = await generate_song_artwork(artist, title, summary, style)
+    
+    await tracker.update(95, "Artwork ready!")
+    await asyncio.sleep(0.3)  # Brief pause
+    return result
+
 async def generate_song_artwork(artist: str, title: str, summary: str, style: str) -> str:
     # Check cache first using summary content hash + style for unique key
     summary_hash = get_content_hash(summary)

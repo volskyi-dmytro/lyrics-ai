@@ -85,6 +85,10 @@
     .summary::-webkit-scrollbar-thumb{background:rgba(255,255,255,.3);border-radius:5px;border:1px solid rgba(255,255,255,.1)}
     .summary::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.5)}
     .summary{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.3) rgba(255,255,255,.06)}
+    .progress-container{margin:12px 0;padding:12px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.06);border-radius:12px;display:none}
+    .progress-bar{width:100%;height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden;margin-bottom:8px}
+    .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:4px;transition:width .3s ease;width:0%}
+    .progress-status{color:var(--muted);font-size:.9rem;text-align:center}
   </style>
 </head>
 <body>
@@ -130,6 +134,12 @@
           <button class="btn secondary" type="button" id="demo-btn">Try demo</button>
         </div>
         <p id="error" class="alert" style="display:none"></p>
+        <div id="progress-container" class="progress-container">
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <div id="progress-status" class="progress-status">Starting...</div>
+        </div>
       </form>
       <div id="results" class="results" hidden>
         <div class="result-grid">
@@ -147,15 +157,116 @@
   </div>
   <script>
     const $ = id => document.getElementById(id);
-    const form = $("song-form"), btn = $("analyze-btn"), demoBtn = $("demo-btn"), errorEl = $("error"), results = $("results"), summaryEl = $("summary"), imageEl = $("image");
+    const form = $("song-form"), btn = $("analyze-btn"), demoBtn = $("demo-btn"), errorEl = $("error");
+    const results = $("results"), summaryEl = $("summary"), imageEl = $("image");
+    const progressContainer = $("progress-container"), progressFill = $("progress-fill"), progressStatus = $("progress-status");
+    
     function toBase64UTF8(str){const bytes=new TextEncoder().encode(str);let binary="";bytes.forEach(b=>binary+=String.fromCharCode(b));return btoa(binary);}
     function escapeXML(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&apos;");}
-    function setLoading(l){btn.disabled=l; if(l){summaryEl.textContent="";imageEl.src="";results.hidden=false;}}
+    
+    function setLoading(l){
+      btn.disabled=l; 
+      progressContainer.style.display = l ? 'block' : 'none';
+      if(l){
+        summaryEl.textContent="";
+        imageEl.src="";
+        results.hidden=false;
+        progressFill.style.width = '0%';
+        progressStatus.textContent = 'Starting...';
+      }
+    }
+    
+    function updateProgress(percent, status){
+      progressFill.style.width = percent + '%';
+      progressStatus.textContent = status;
+    }
+    
     function showError(msg){errorEl.textContent=msg;errorEl.style.display='block';setTimeout(()=>errorEl.style.display='none',4000);}
-    async function analyze({artist,title,style,language}){const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({artist,title,style,language})});if(!res.ok) throw new Error(await res.text());return res.json();}
-    async function analyzeDemo({artist,title,style,language}){await new Promise(r=>setTimeout(r,800));const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#1f2937"/><text x="50%" y="50%" fill="#e5e7eb" font-size="46" text-anchor="middle">${escapeXML(artist)} — ${escapeXML(title)}</text><text x="50%" y="585" fill="#cbd5e1" font-size="22" text-anchor="middle">AI demo artwork (${escapeXML(style||'default')})</text></svg>`;const summary = language === 'uk' ? `'${title}' виконавця ${artist} розповідає про вірність...` : `${title} by ${artist} explores loyalty...`;return {summary,imageUrl:'data:image/svg+xml;base64,'+toBase64UTF8(svg)};}
-    form.addEventListener('submit',async e=>{e.preventDefault();const artist=form.artist.value.trim(),title=form.title.value.trim(),style=form.style.value.trim(),language=form.language.value;if(!artist||!title)return showError('Please provide both artist and song title.');setLoading(true);try{const data=await analyze({artist,title,style,language});summaryEl.textContent=data.summary;imageEl.src=data.imageUrl;}catch(err){showError(err.message);}finally{setLoading(false);}});
-    demoBtn.addEventListener('click',async e=>{e.preventDefault();const artist=form.artist.value.trim()||'Metallica',title=form.title.value.trim()||'Nothing Else Matters',style=form.style.value.trim(),language=form.language.value;setLoading(true);const data=await analyzeDemo({artist,title,style,language});summaryEl.textContent=data.summary;imageEl.src=data.imageUrl;setLoading(false);});
+    
+    async function startAnalysis({artist,title,style,language}){
+      const res=await fetch('/api/analyze/start',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({artist,title,style,language})
+      });
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+    
+    function connectToProgress(requestId) {
+      const eventSource = new EventSource(`/api/progress/${requestId}`);
+      
+      eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        
+        if(data.error) {
+          showError(data.error);
+          setLoading(false);
+          eventSource.close();
+          return;
+        }
+        
+        updateProgress(data.progress, data.status);
+        
+        if(data.result) {
+          summaryEl.textContent = data.result.summary;
+          imageEl.src = data.result.imageUrl;
+        }
+        
+        if(data.progress >= 100) {
+          setLoading(false);
+          eventSource.close();
+        }
+      };
+      
+      eventSource.onerror = function() {
+        showError('Connection lost. Please try again.');
+        setLoading(false);
+        eventSource.close();
+      };
+      
+      return eventSource;
+    }
+    
+    async function analyze({artist,title,style,language}){
+      const startRes = await startAnalysis({artist,title,style,language});
+      return connectToProgress(startRes.request_id);
+    }
+    
+    async function analyzeDemo({artist,title,style,language}){
+      await new Promise(r=>setTimeout(r,800));
+      const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#1f2937"/><text x="50%" y="50%" fill="#e5e7eb" font-size="46" text-anchor="middle">${escapeXML(artist)} — ${escapeXML(title)}</text><text x="50%" y="585" fill="#cbd5e1" font-size="22" text-anchor="middle">AI demo artwork (${escapeXML(style||'default')})</text></svg>`;
+      const summary = language === 'uk' ? `'${title}' виконавця ${artist} розповідає про вірність...` : `${title} by ${artist} explores loyalty...`;
+      return {summary,imageUrl:'data:image/svg+xml;base64,'+toBase64UTF8(svg)};
+    }
+    
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();
+      const artist=form.artist.value.trim(),title=form.title.value.trim(),style=form.style.value.trim(),language=form.language.value;
+      if(!artist||!title)return showError('Please provide both artist and song title.');
+      setLoading(true);
+      try{
+        await analyze({artist,title,style,language});
+      }catch(err){
+        showError(err.message);
+        setLoading(false);
+      }
+    });
+    
+    demoBtn.addEventListener('click',async e=>{
+      e.preventDefault();
+      const artist=form.artist.value.trim()||'Metallica',title=form.title.value.trim()||'Nothing Else Matters',style=form.style.value.trim(),language=form.language.value;
+      setLoading(true);
+      // Simulate progress for demo
+      for(let i = 0; i <= 100; i += 10) {
+        updateProgress(i, i < 30 ? 'Searching lyrics...' : i < 70 ? 'Analyzing meaning...' : i < 100 ? 'Generating artwork...' : 'Complete!');
+        await new Promise(r => setTimeout(r, 80));
+      }
+      const data=await analyzeDemo({artist,title,style,language});
+      summaryEl.textContent=data.summary;
+      imageEl.src=data.imageUrl;
+      setLoading(false);
+    });
   </script>
 </body>
 </html>

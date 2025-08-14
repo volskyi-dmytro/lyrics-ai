@@ -2,13 +2,16 @@ package com.example.songmeaning.service;
 
 import com.example.songmeaning.dto.SongRequest;
 import com.example.songmeaning.dto.SongResponse;
+import com.example.songmeaning.dto.AnalyzeStartResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -39,6 +42,26 @@ public class PythonClient {
       String friendlyMessage = extractFriendlyMessage(body, ex.getMessage());
       throw new ResponseStatusException(status, friendlyMessage);
     }
+  }
+
+  public AnalyzeStartResponse analyzeStart(SongRequest req){
+    try {
+      return http.post().uri(baseUrl + "/analyze/start")
+          .contentType(MediaType.APPLICATION_JSON)
+          .accept(MediaType.APPLICATION_JSON)
+          .body(req)
+          .retrieve()
+          .body(AnalyzeStartResponse.class);
+    } catch (RestClientResponseException ex) {
+      HttpStatusCode status = ex.getStatusCode();
+      String body = ex.getResponseBodyAsString();
+      String friendlyMessage = extractFriendlyMessage(body, ex.getMessage());
+      throw new ResponseStatusException(status, friendlyMessage);
+    }
+  }
+
+  public String getProgressStreamUrl(String requestId) {
+    return baseUrl + "/progress/" + requestId;
   }
 
   private String extractFriendlyMessage(String jsonBody, String fallback) {
