@@ -1,0 +1,17 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: always
+ai:
+  base-url: ${AI_BASE_URL:http://localhost:8000}
+spring:
+  mvc:
+    problemdetails:
+      enabled: true
+logging:
+  level:
+    org.springframework.web: DEBUG
+    org.springframework.web.client: DEBUG
+    com.example: DEBUG

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Song Meaning Summarizer</title>
+  <style>
+    :root{
+      --bg: #0b0f14;
+      --panel: #121923;
+      --panel-2: #0e1520;
+      --text: #e6eef7;
+      --muted: #a6b3c2;
+      --accent: #6aa6ff;
+      --accent-2:#8bdb81;
+      --danger: #ff6b6b;
+      --ring: rgba(106,166,255,.35);
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --panel-2:#f0f4f9;
+        --text: #0c1624;
+        --muted: #415063;
+        --accent: #2463eb;
+        --accent-2:#15803d;
+        --danger: #dc2626;
+        --ring: rgba(36,99,235,.2);
+      }
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, rgba(106,166,255,.15), transparent 60%),
+                  radial-gradient(900px 700px at -10% 10%, rgba(139,219,129,.12), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      line-height:1.6;
+    }
+    .container{max-width:980px;margin:0 auto;padding:28px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{
+      width:40px;height:40px;border-radius:12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display:grid;place-items:center;color:white;font-weight:900;
+      box-shadow:0 6px 25px rgba(0,0,0,.25), 0 0 0 6px rgba(106,166,255,.08);
+    }
+    .title{font-size:1.35rem;margin:0}
+    .subtitle{margin:2px 0 0;color:var(--muted);font-size:.95rem}
+    .card{background:linear-gradient(180deg, var(--panel), var(--panel-2));
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:16px; padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.18)}
+    form{display:grid;grid-template-columns:1fr;gap:12px}
+    .grid{display:grid;gap:12px}
+    @media(min-width:720px){
+      form .grid{grid-template-columns:1fr 1fr}
+    }
+    label{font-weight:600}
+    input, button{font:inherit}
+    .input{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:12px; padding:12px 14px}
+    .input input{flex:1;background:transparent;border:0;outline:none;color:var(--text)}
+    .hint{color:var(--muted);font-size:.85rem;margin-top:4px}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{border:0; border-radius:12px; padding:12px 16px; cursor:pointer; font-weight:700;background:linear-gradient(135deg, var(--accent), #90b6ff); color:white;box-shadow:0 8px 24px rgba(36,99,235,.35); transition:transform .06s ease}
+    .btn.secondary{background:transparent;color:var(--text);border:1px dashed rgba(255,255,255,.2);box-shadow:none}
+    .btn:active{transform:translateY(1px)}
+    .btn[disabled]{opacity:.6;cursor:not-allowed;filter:grayscale(.3)}
+    .results{margin-top:18px; display:grid; gap:14px}
+    .result-grid{display:grid; gap:14px}
+    @media(min-width:920px){.result-grid{grid-template-columns: 1.1fr .9fr}}
+    .summary{white-space:pre-wrap; word-wrap:break-word; background:rgba(0,0,0,.18); border:1px solid rgba(255,255,255,.06);border-radius:12px; padding:14px; min-height:130px; max-height:200px; overflow-y:scroll; line-height:1.6; box-sizing:border-box}
+    figure{margin:0; overflow:hidden; border-radius:12px; background:rgba(0,0,0,.18); border:1px solid rgba(255,255,255,.06)}
+    .preview{display:block; width:100%; height:auto}
+    .skeleton{animation:pulse 1.2s ease-in-out infinite; background:linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.12), rgba(255,255,255,.06)); background-size:200% 100%}
+    @keyframes pulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .alert{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,0,0,.1);color:#ffd6d6}
+    .footer{margin-top:26px; color:var(--muted); font-size:.9rem}
+    .kbd{padding:2px 6px;border-radius:6px; border:1px solid rgba(255,255,255,.25); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .input:focus-within, .btn:focus{outline:none; box-shadow:0 0 0 .2rem var(--ring)}
+    .summary::-webkit-scrollbar{width:10px}
+    .summary::-webkit-scrollbar-track{background:rgba(255,255,255,.06);border-radius:5px;margin:4px}
+    .summary::-webkit-scrollbar-thumb{background:rgba(255,255,255,.3);border-radius:5px;border:1px solid rgba(255,255,255,.1)}
+    .summary::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.5)}
+    .summary{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.3) rgba(255,255,255,.06)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true">♪</div>
+        <div>
+          <h1 class="title">Song Meaning Summarizer</h1>
+          <p class="subtitle">Type an <strong>artist</strong> and <strong>song title</strong>. Get a concise meaning + an AI-generated artwork using DALL-E.</p>
+        </div>
+      </div>
+    </header>
+    <section class="card">
+      <form id="song-form" novalidate>
+        <div class="grid">
+          <div>
+            <label for="artist">Artist</label>
+            <div class="input"><input id="artist" name="artist" placeholder="e.g., Metallica" required /></div>
+          </div>
+          <div>
+            <label for="title">Song title</label>
+            <div class="input"><input id="title" name="title" placeholder="e.g., Nothing Else Matters" required /></div>
+          </div>
+        </div>
+        <div class="grid">
+          <div>
+            <label for="style">Image style (optional)</label>
+            <div class="input"><input id="style" name="style" placeholder="album cover, cinematic, watercolor, grunge, vintage…" /></div>
+          </div>
+          <div>
+            <label for="language">Summary language</label>
+            <div class="input">
+              <select id="language" name="language" style="flex:1;background:transparent;border:0;outline:none;color:var(--text)">
+                <option value="en">English</option>
+                <option value="uk">Українська</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="analyze-btn" type="submit">Summarize & Generate</button>
+          <button class="btn secondary" type="button" id="demo-btn">Try demo</button>
+        </div>
+        <p id="error" class="alert" style="display:none"></p>
+      </form>
+      <div id="results" class="results" hidden>
+        <div class="result-grid">
+          <div>
+            <h3>Meaning</h3>
+            <div id="summary" class="summary"></div>
+          </div>
+          <div>
+            <h3>Imagery</h3>
+            <figure><img id="image" class="preview" alt="" /></figure>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    const $ = id => document.getElementById(id);
+    const form = $("song-form"), btn = $("analyze-btn"), demoBtn = $("demo-btn"), errorEl = $("error"), results = $("results"), summaryEl = $("summary"), imageEl = $("image");
+    function toBase64UTF8(str){const bytes=new TextEncoder().encode(str);let binary="";bytes.forEach(b=>binary+=String.fromCharCode(b));return btoa(binary);}
+    function escapeXML(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&apos;");}
+    function setLoading(l){btn.disabled=l; if(l){summaryEl.textContent="";imageEl.src="";results.hidden=false;}}
+    function showError(msg){errorEl.textContent=msg;errorEl.style.display='block';setTimeout(()=>errorEl.style.display='none',4000);}
+    async function analyze({artist,title,style,language}){const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({artist,title,style,language})});if(!res.ok) throw new Error(await res.text());return res.json();}
+    async function analyzeDemo({artist,title,style,language}){await new Promise(r=>setTimeout(r,800));const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#1f2937"/><text x="50%" y="50%" fill="#e5e7eb" font-size="46" text-anchor="middle">${escapeXML(artist)} — ${escapeXML(title)}</text><text x="50%" y="585" fill="#cbd5e1" font-size="22" text-anchor="middle">AI demo artwork (${escapeXML(style||'default')})</text></svg>`;const summary = language === 'uk' ? `'${title}' виконавця ${artist} розповідає про вірність...` : `${title} by ${artist} explores loyalty...`;return {summary,imageUrl:'data:image/svg+xml;base64,'+toBase64UTF8(svg)};}
+    form.addEventListener('submit',async e=>{e.preventDefault();const artist=form.artist.value.trim(),title=form.title.value.trim(),style=form.style.value.trim(),language=form.language.value;if(!artist||!title)return showError('Please provide both artist and song title.');setLoading(true);try{const data=await analyze({artist,title,style,language});summaryEl.textContent=data.summary;imageEl.src=data.imageUrl;}catch(err){showError(err.message);}finally{setLoading(false);}});
+    demoBtn.addEventListener('click',async e=>{e.preventDefault();const artist=form.artist.value.trim()||'Metallica',title=form.title.value.trim()||'Nothing Else Matters',style=form.style.value.trim(),language=form.language.value;setLoading(true);const data=await analyzeDemo({artist,title,style,language});summaryEl.textContent=data.summary;imageEl.src=data.imageUrl;setLoading(false);});
+  </script>
+</body>
+</html>

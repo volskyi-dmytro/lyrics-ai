@@ -1,0 +1,113 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+*.env
+
+# API Keys and sensitive data
+config/secrets/
+secrets/
+*.key
+*.pem
+*.p12
+*.keystore
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Java/Maven
+java-api/target/
+java-api/.mvn/
+java-api/mvnw
+java-api/mvnw.cmd
+*.jar
+*.war
+*.ear
+*.class
+.classpath
+.project
+.settings/
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Python
+py-ai/__pycache__/
+py-ai/*.pyc
+py-ai/*.pyo
+py-ai/*.pyd
+py-ai/.Python
+py-ai/build/
+py-ai/develop-eggs/
+py-ai/dist/
+py-ai/downloads/
+py-ai/eggs/
+py-ai/.eggs/
+py-ai/lib/
+py-ai/lib64/
+py-ai/parts/
+py-ai/sdist/
+py-ai/var/
+py-ai/wheels/
+py-ai/*.egg-info/
+py-ai/.installed.cfg
+py-ai/*.egg
+py-ai/MANIFEST
+py-ai/.env
+py-ai/venv/
+py-ai/ENV/
+py-ai/env/
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.tmp
+*.temp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js (if any frontend dependencies)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Test files
+coverage/
+test-results/
+*.test.log
+
+# Zone Identifier files (Windows)
+*.Zone.Identifier

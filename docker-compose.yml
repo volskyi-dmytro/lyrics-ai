@@ -1,0 +1,25 @@
+services:
+  pyai:                     
+    build: ./py-ai
+    image: song-meaning-py:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GENIUS_API_TOKEN=${GENIUS_API_TOKEN:-}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  java_api:
+    build: ./java-api
+    image: song-meaning-java:latest
+    environment:
+      - AI_BASE_URL=http://pyai:8000    
+    ports:
+      - "8080:8080"
+    depends_on:
+      pyai:                             
+        condition: service_healthy
