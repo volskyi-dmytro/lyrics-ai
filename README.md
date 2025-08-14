@@ -4,6 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
+[![Redis](https://img.shields.io/badge/Redis-Cache-red?logo=redis)](https://redis.io/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini%20%7C%20DALL--E--3-green)](https://openai.com/)
 [![Genius API](https://img.shields.io/badge/Genius-API-yellow)](https://genius.com/)
 
@@ -16,6 +17,7 @@
 - **AI Artwork Generation** with DALL-E 3
 - **10+ Artistic Styles** (vintage, psychedelic, minimalist, etc.)
 - **Scrollable Content** for detailed analyses
+- **⚡ Redis Caching System** for optimal performance and cost reduction
 
 ### 🎨 AI-Generated Artwork Styles
 - 🎭 **Album Cover** - Professional music industry style
@@ -70,12 +72,17 @@ docker-compose up -d
 │   Port: 8080    │    │   Port: 8080     │    │   Port: 8000    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                                 │                        │
-                                │                        │
+                                │                        ▼
                        ┌─────────────────┐    ┌─────────────────┐
-                       │   Static Files  │    │   External APIs │
-                       │   (CSS/HTML)    │    │   • OpenAI      │
-                       │                 │    │   • Genius      │
+                       │   Static Files  │    │   Redis Cache   │
+                       │   (CSS/HTML)    │    │   Port: 6379    │
                        └─────────────────┘    └─────────────────┘
+                                                        │
+                                              ┌─────────────────┐
+                                              │   External APIs │
+                                              │   • OpenAI      │
+                                              │   • Genius      │
+                                              └─────────────────┘
 ```
 
 ### Technology Stack
@@ -97,9 +104,11 @@ docker-compose up -d
   - AI text analysis with GPT-4o-mini
   - Image generation with DALL-E 3
   - Multilingual processing
+  - Redis caching integration
 
 #### Infrastructure
 - **Docker & Docker Compose** - Containerized deployment
+- **Redis 7** - High-performance caching and session storage
 - **Health Checks** - Service monitoring
 - **Logging** - Comprehensive error tracking
 
@@ -133,6 +142,32 @@ Content-Type: application/json
 - `title` (required) - Song title
 - `style` (optional) - Artwork style (default: "album cover")
 - `language` (optional) - Summary language: "en" or "uk" (default: "en")
+
+### Cache Health Monitoring
+Check Redis cache status and performance metrics.
+
+```http
+GET /cache/health
+```
+
+**Response:**
+```json
+{
+  "redis_connected": true,
+  "cache_stats": {
+    "hits": 15,
+    "misses": 5,
+    "sets": 5,
+    "errors": 0
+  },
+  "hit_rate": 75.0,
+  "redis_info": {
+    "redis_version": "7.4.5",
+    "used_memory_human": "1.05M",
+    "connected_clients": 1
+  }
+}
+```
 
 ## 🔧 Configuration
 
@@ -169,10 +204,17 @@ AI_BASE_URL=http://localhost:8000
 
 The application uses multi-stage Docker builds for optimization:
 
-- **Python Service**: Lightweight FastAPI container
+- **Python Service**: Lightweight FastAPI container with Redis integration
 - **Java Service**: Optimized Spring Boot container
-- **Health Checks**: Automatic service monitoring
-- **Dependencies**: Managed with Docker Compose
+- **Redis Service**: Persistent caching layer with health monitoring
+- **Health Checks**: Automatic service monitoring and dependencies
+- **Dependencies**: Managed service startup order with Docker Compose
+
+### Service Dependencies
+```
+Redis → Python AI → Java API
+```
+Each service waits for its dependencies to be healthy before starting.
 
 ## 🔒 Security Features
 
@@ -182,12 +224,39 @@ The application uses multi-stage Docker builds for optimization:
 - **Rate Limiting Ready** - Architecture supports rate limiting
 - **HTTPS Ready** - Can be easily configured for SSL/TLS
 
+## ⚡ Redis Caching System
+
+### Caching Strategy
+Our intelligent caching system dramatically improves performance and reduces API costs:
+
+#### 📝 **Lyrics Caching**
+- **TTL**: 7 days (lyrics don't change)
+- **Purpose**: Avoid repeated Genius API calls
+- **Key Format**: `lyrics:artist:title`
+
+#### 🧠 **Summary Caching**
+- **TTL**: 7 days 
+- **Purpose**: Reduce OpenAI GPT-4o-mini costs
+- **Key Format**: `summary:content_hash:language`
+
+#### 🎨 **Image URL Caching**
+- **TTL**: 30 days (longest TTL - most expensive)
+- **Purpose**: Reduce DALL-E 3 generation costs
+- **Key Format**: `image:artist:title:summary_hash:style`
+
+### Cache Benefits
+- **🚀 Performance**: Cached requests are 10x+ faster
+- **💰 Cost Reduction**: Significant savings on API calls
+- **📊 Monitoring**: Real-time cache metrics via `/cache/health`
+- **🔄 Graceful Degradation**: Works seamlessly when Redis is unavailable
+
 ## 📊 Performance
 
-- **Fast Response Times** - Optimized API calls and caching
+- **Fast Response Times** - Optimized API calls and intelligent caching
 - **Concurrent Processing** - Async/await patterns throughout
 - **Lightweight Containers** - Minimal resource usage
 - **Scalable Architecture** - Microservices design
+- **Smart Caching** - Redis-powered performance optimization
 
 ## 🤝 Contributing
 
