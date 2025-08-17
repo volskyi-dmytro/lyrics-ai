@@ -60,6 +60,38 @@ public class PythonClient {
     }
   }
 
+  public Object summarize(SongRequest req){
+    try {
+      return http.post().uri(baseUrl + "/summarize")
+          .contentType(MediaType.APPLICATION_JSON)
+          .accept(MediaType.APPLICATION_JSON)
+          .body(req)
+          .retrieve()
+          .body(Object.class);
+    } catch (RestClientResponseException ex) {
+      HttpStatusCode status = ex.getStatusCode();
+      String body = ex.getResponseBodyAsString();
+      String friendlyMessage = extractFriendlyMessage(body, ex.getMessage());
+      throw new ResponseStatusException(status, friendlyMessage);
+    }
+  }
+
+  public Object generate(SongRequest req){
+    try {
+      return http.post().uri(baseUrl + "/generate")
+          .contentType(MediaType.APPLICATION_JSON)
+          .accept(MediaType.APPLICATION_JSON)
+          .body(req)
+          .retrieve()
+          .body(Object.class);
+    } catch (RestClientResponseException ex) {
+      HttpStatusCode status = ex.getStatusCode();
+      String body = ex.getResponseBodyAsString();
+      String friendlyMessage = extractFriendlyMessage(body, ex.getMessage());
+      throw new ResponseStatusException(status, friendlyMessage);
+    }
+  }
+
   public String getProgressStreamUrl(String requestId) {
     return baseUrl + "/progress/" + requestId;
   }

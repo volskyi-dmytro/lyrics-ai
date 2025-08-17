@@ -184,6 +184,12 @@ class SongResponse(BaseModel):
     summary: str
     imageUrl: str
 
+class SummaryResponse(BaseModel):
+    summary: str
+
+class ImageResponse(BaseModel):
+    imageUrl: str
+
 class AnalyzeStartResponse(BaseModel):
     request_id: str
 
@@ -291,6 +297,52 @@ async def analyze(req: SongRequest):
         raise http_exc  # let FastAPI handle known errors
     except Exception as e:
         logger.error(f"Error in /analyze endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.post("/summarize", response_model=SummaryResponse)
+async def summarize_only(req: SongRequest):
+    """Summarize song lyrics only (no image generation)."""
+    try:
+        artist = sanitize_input(req.artist)
+        title = sanitize_input(req.title)
+        if not artist or not title:
+            raise HTTPException(status_code=400, detail="Artist and title are required.")
+
+        lyrics = await fetch_lyrics(artist, title)
+        if not lyrics:
+            raise HTTPException(status_code=404, detail=f"Lyrics not found for '{artist} - {title}'. Try another song.")
+
+        summary = await summarize_lyrics(lyrics, artist, title, req.language or "en")
+        return SummaryResponse(summary=summary)
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error in /summarize endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.post("/generate", response_model=ImageResponse)
+async def generate_only(req: SongRequest):
+    """Generate AI artwork only (requires summary in request body)."""
+    try:
+        artist = sanitize_input(req.artist)
+        title = sanitize_input(req.title)
+        if not artist or not title:
+            raise HTTPException(status_code=400, detail="Artist and title are required.")
+
+        # For image generation, we need lyrics to create a meaningful summary
+        lyrics = await fetch_lyrics(artist, title)
+        if not lyrics:
+            raise HTTPException(status_code=404, detail=f"Lyrics not found for '{artist} - {title}'. Try another song.")
+
+        summary = await summarize_lyrics(lyrics, artist, title, req.language or "en")
+        image_url = await generate_song_artwork(artist, title, summary, req.style or "album cover")
+        return ImageResponse(imageUrl=image_url)
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error in /generate endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 async def analyze_song_background(request_id: str, req: SongRequest):

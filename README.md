@@ -16,9 +16,16 @@
 - **Multilingual Support** (English & Ukrainian)
 - **AI Artwork Generation** with DALL-E 3
 - **10+ Artistic Styles** (vintage, psychedelic, minimalist, etc.)
+- **💰 Flexible Cost Control** with separate Summarize/Generate buttons
 - **Scrollable Content** for detailed analyses
 - **📊 Real-time Progress Tracking** with animated progress bar
 - **⚡ Redis Caching System** for optimal performance and cost reduction
+
+### 🎛️ User Interface Options
+- **"Summarize"** - Get lyrics analysis only (~$0.001 cost)
+- **"Generate Image"** - Create AI artwork only (~$0.04 cost)  
+- **"Both"** - Complete analysis + artwork (~$0.041 total cost)
+- **Smart Cost Management** - Choose exactly what you need
 
 ### 🎨 AI-Generated Artwork Styles
 - 🎭 **Album Cover** - Professional music industry style
@@ -62,6 +69,10 @@ docker-compose up -d
 
 4. **Access the application**
 - Open your browser to `http://localhost:8080`
+- Try the new cost-effective buttons:
+  - **"Summarize"** for quick analysis (~$0.001)
+  - **"Generate Image"** for AI artwork (~$0.04)
+  - **"Both"** for complete experience (~$0.041)
 - Start analyzing songs! 🎵
 
 ## 🏗️ Architecture
@@ -115,7 +126,51 @@ docker-compose up -d
 
 ## 📋 API Reference
 
-### Analyze Song (Legacy)
+### 💰 Cost-Effective Endpoints
+
+#### Summarize Only
+Get lyrics analysis without expensive image generation.
+
+```http
+POST /api/summarize
+Content-Type: application/json
+
+{
+  "artist": "Queen",
+  "title": "Bohemian Rhapsody",
+  "language": "en"
+}
+```
+
+**Response:**
+```json
+{
+  "summary": "Detailed song analysis..."
+}
+```
+
+#### Generate Image Only
+Create AI artwork (requires lyrics lookup for context).
+
+```http
+POST /api/generate
+Content-Type: application/json
+
+{
+  "artist": "Queen",
+  "title": "Bohemian Rhapsody",
+  "style": "vintage"
+}
+```
+
+**Response:**
+```json
+{
+  "imageUrl": "https://oaidalleapiprodscus.blob.core.windows.net/..."
+}
+```
+
+### Analyze Song (Complete)
 Analyzes a song's lyrics and generates artwork synchronously.
 
 ```http
@@ -316,6 +371,73 @@ Watch your song analysis happen in real-time with our animated progress bar:
 - **Engaging visual feedback** during longer operations
 - **Professional progress indicators** similar to modern web apps
 - **Demo mode** with instant progress simulation
+
+## 💰 Cost Analysis & Optimization
+
+### API Cost Breakdown
+Understanding the cost structure helps you make informed decisions:
+
+#### Per-Request Costs (without caching)
+- **Lyrics Fetching**: FREE (Genius API)
+- **GPT-4o-mini Analysis**: ~$0.001 per song
+- **DALL-E 3 Image Generation**: ~$0.04 per image
+
+#### Usage Scenarios
+| Button Choice | Operations | Estimated Cost | Use Case |
+|---------------|------------|----------------|----------|
+| **"Summarize"** | Lyrics + Analysis | ~$0.001 | Quick meaning check |
+| **"Generate Image"** | Lyrics + Analysis + Image | ~$0.041 | Visual artwork focus |
+| **"Both"** | Complete workflow | ~$0.041 | Full experience |
+
+#### Cost Savings with Redis Caching
+- **First Request**: Full API costs apply
+- **Cached Requests**: ~$0.000 (near-zero cost)
+- **Cache Hit Rate**: Typically 60-80% in normal usage
+- **Monthly Savings**: Can reduce costs by 70%+ for popular songs
+
+### Smart Cost Management Tips
+1. **Use "Summarize" first** to understand the song
+2. **Generate images selectively** for songs you love
+3. **Leverage caching** - popular songs cost almost nothing on repeat
+4. **Monitor usage** via `/cache/health` endpoint
+
+## 🎯 Usage Examples
+
+### Scenario 1: Quick Song Understanding
+You want to understand a song's meaning without spending on artwork:
+
+```bash
+# Via UI: Click "Summarize" button
+# Via API:
+curl -X POST http://localhost:8080/api/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Queen", "title": "Bohemian Rhapsody", "language": "en"}'
+```
+**Cost**: ~$0.001 • **Result**: Detailed meaning analysis
+
+### Scenario 2: Artwork Focus
+You already know the song but want stunning AI artwork:
+
+```bash
+# Via UI: Click "Generate Image" button
+# Via API:
+curl -X POST http://localhost:8080/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Queen", "title": "Bohemian Rhapsody", "style": "psychedelic"}'
+```
+**Cost**: ~$0.041 • **Result**: High-quality AI artwork
+
+### Scenario 3: Complete Experience
+Full analysis + artwork for your favorite songs:
+
+```bash
+# Via UI: Click "Both" button
+# Via API:
+curl -X POST http://localhost:8080/api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Queen", "title": "Bohemian Rhapsody", "style": "vintage", "language": "en"}'
+```
+**Cost**: ~$0.041 • **Result**: Summary + artwork
 
 ## 📊 Performance
 

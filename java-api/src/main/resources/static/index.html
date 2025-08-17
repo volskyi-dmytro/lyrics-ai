@@ -130,7 +130,9 @@
           </div>
         </div>
         <div class="actions">
-          <button class="btn" id="analyze-btn" type="submit">Summarize & Generate</button>
+          <button class="btn" id="summarize-btn" type="button">Summarize</button>
+          <button class="btn" id="generate-btn" type="button">Generate Image</button>
+          <button class="btn" id="analyze-btn" type="submit">Both</button>
           <button class="btn secondary" type="button" id="demo-btn">Try demo</button>
         </div>
         <p id="error" class="alert" style="display:none"></p>
@@ -158,6 +160,7 @@
   <script>
     const $ = id => document.getElementById(id);
     const form = $("song-form"), btn = $("analyze-btn"), demoBtn = $("demo-btn"), errorEl = $("error");
+    const summarizeBtn = $("summarize-btn"), generateBtn = $("generate-btn");
     const results = $("results"), summaryEl = $("summary"), imageEl = $("image");
     const progressContainer = $("progress-container"), progressFill = $("progress-fill"), progressStatus = $("progress-status");
     
@@ -166,10 +169,10 @@
     
     function setLoading(l){
       btn.disabled=l; 
+      summarizeBtn.disabled=l;
+      generateBtn.disabled=l;
       progressContainer.style.display = l ? 'block' : 'none';
       if(l){
-        summaryEl.textContent="";
-        imageEl.src="";
         results.hidden=false;
         progressFill.style.width = '0%';
         progressStatus.textContent = 'Starting...';
@@ -233,6 +236,26 @@
       return connectToProgress(startRes.request_id);
     }
     
+    async function summarizeOnly({artist,title,style,language}){
+      const res=await fetch('/api/summarize',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({artist,title,style,language})
+      });
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+    
+    async function generateOnly({artist,title,style,language}){
+      const res=await fetch('/api/generate',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({artist,title,style,language})
+      });
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+    
     async function analyzeDemo({artist,title,style,language}){
       await new Promise(r=>setTimeout(r,800));
       const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#1f2937"/><text x="50%" y="50%" fill="#e5e7eb" font-size="46" text-anchor="middle">${escapeXML(artist)} — ${escapeXML(title)}</text><text x="50%" y="585" fill="#cbd5e1" font-size="22" text-anchor="middle">AI demo artwork (${escapeXML(style||'default')})</text></svg>`;
@@ -247,6 +270,40 @@
       setLoading(true);
       try{
         await analyze({artist,title,style,language});
+      }catch(err){
+        showError(err.message);
+        setLoading(false);
+      }
+    });
+    
+    summarizeBtn.addEventListener('click',async e=>{
+      e.preventDefault();
+      const artist=form.artist.value.trim(),title=form.title.value.trim(),style=form.style.value.trim(),language=form.language.value;
+      if(!artist||!title)return showError('Please provide both artist and song title.');
+      setLoading(true);
+      updateProgress(50, 'Analyzing lyrics...');
+      try{
+        const data=await summarizeOnly({artist,title,style,language});
+        summaryEl.textContent=data.summary;
+        updateProgress(100, 'Summary complete!');
+        setTimeout(() => setLoading(false), 500);
+      }catch(err){
+        showError(err.message);
+        setLoading(false);
+      }
+    });
+    
+    generateBtn.addEventListener('click',async e=>{
+      e.preventDefault();
+      const artist=form.artist.value.trim(),title=form.title.value.trim(),style=form.style.value.trim(),language=form.language.value;
+      if(!artist||!title)return showError('Please provide both artist and song title.');
+      setLoading(true);
+      updateProgress(50, 'Generating AI artwork...');
+      try{
+        const data=await generateOnly({artist,title,style,language});
+        imageEl.src=data.imageUrl;
+        updateProgress(100, 'Artwork complete!');
+        setTimeout(() => setLoading(false), 500);
       }catch(err){
         showError(err.message);
         setLoading(false);
