@@ -190,6 +190,18 @@ class SummaryResponse(BaseModel):
 class ImageResponse(BaseModel):
     imageUrl: str
 
+class SpotifyTrack(BaseModel):
+    id: str
+    name: str
+    artist: str
+    preview_url: Optional[str]
+    external_url: str
+    image_url: Optional[str]
+
+class SpotifyResponse(BaseModel):
+    track: Optional[SpotifyTrack]
+    found: bool
+
 class AnalyzeStartResponse(BaseModel):
     request_id: str
 
@@ -345,6 +357,24 @@ async def generate_only(req: SongRequest):
         logger.error(f"Error in /generate endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
+@app.post("/spotify/search", response_model=SpotifyResponse)
+async def spotify_search(req: SongRequest):
+    """Search for a track on Spotify."""
+    try:
+        artist = sanitize_input(req.artist)
+        title = sanitize_input(req.title)
+        if not artist or not title:
+            raise HTTPException(status_code=400, detail="Artist and title are required.")
+
+        track = await search_spotify_track(artist, title)
+        return SpotifyResponse(track=track, found=track is not None)
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error in /spotify/search endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
 async def analyze_song_background(request_id: str, req: SongRequest):
     """Background task for song analysis with progress tracking."""
     tracker = ProgressTracker(request_id)
@@ -376,6 +406,67 @@ async def analyze_song_background(request_id: str, req: SongRequest):
     except Exception as e:
         logger.error(f"Background analysis error: {e}", exc_info=True)
         await tracker.update(100, f"Error: {str(e)}")
+
+# ---- Spotify search functionality ----
+async def search_spotify_track(artist: str, title: str) -> Optional[SpotifyTrack]:
+    """Search for a track on Spotify and return track details."""
+    # Check cache first
+    cache_key = get_cache_key("spotify", artist, title)
+    cached_track = await get_from_cache(cache_key)
+    if cached_track:
+        try:
+            track_data = json.loads(cached_track)
+            return SpotifyTrack(**track_data)
+        except Exception:
+            pass  # Cache corruption, continue with API call
+    
+    spotify_token = os.getenv("SPOTIFY_API_TOKEN")
+    if not spotify_token:
+        logger.warning("SPOTIFY_API_TOKEN not configured")
+        return None
+    
+    try:
+        import httpx
+        search_query = f"track:{title} artist:{artist}"
+        search_url = "https://api.spotify.com/v1/search"
+        headers = {"Authorization": f"Bearer {spotify_token}"}
+        params = {
+            "q": search_query,
+            "type": "track",
+            "limit": 1,
+            "market": "US"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(search_url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            tracks = data.get("tracks", {}).get("items", [])
+            if not tracks:
+                logger.info(f"No Spotify track found for {artist} - {title}")
+                return None
+            
+            track_info = tracks[0]
+            
+            # Extract track information
+            spotify_track = SpotifyTrack(
+                id=track_info["id"],
+                name=track_info["name"],
+                artist=track_info["artists"][0]["name"] if track_info["artists"] else artist,
+                preview_url=track_info.get("preview_url"),
+                external_url=track_info["external_urls"]["spotify"],
+                image_url=track_info["album"]["images"][0]["url"] if track_info["album"]["images"] else None
+            )
+            
+            # Cache the track info for 7 days
+            await set_cache(cache_key, spotify_track.model_dump_json(), 7 * 24 * 3600)
+            
+            return spotify_track
+            
+    except Exception as e:
+        logger.error(f"Error searching Spotify: {e}", exc_info=True)
+        return None
 
 # ---- Lyrics fetching with Genius ----
 async def fetch_lyrics_with_progress(artist: str, title: str, tracker: ProgressTracker) -> Optional[str]:

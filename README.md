@@ -27,6 +27,13 @@
 - **"Both"** - Complete analysis + artwork (~$0.041 total cost)
 - **Smart Cost Management** - Choose exactly what you need
 
+### 🎵 Music Integration
+- **Spotify Integration** - Direct links to play songs
+- **Music Player Component** - Embedded below analysis results
+- **Album Artwork** - High-quality images from Spotify
+- **Audio Previews** - 30-second song previews (when available)
+- **One-Click Spotify** - Opens songs directly in Spotify app/web
+
 ### 🎨 AI-Generated Artwork Styles
 - 🎭 **Album Cover** - Professional music industry style
 - 🎬 **Cinematic** - Movie poster aesthetics
@@ -60,6 +67,7 @@ cp .env.example .env
 # Edit .env with your API keys:
 # OPENAI_API_KEY=your_openai_api_key_here
 # GENIUS_API_TOKEN=your_genius_api_token_here
+# SPOTIFY_API_TOKEN=your_spotify_api_token_here
 ```
 
 3. **Start the application**
@@ -167,6 +175,34 @@ Content-Type: application/json
 ```json
 {
   "imageUrl": "https://oaidalleapiprodscus.blob.core.windows.net/..."
+}
+```
+
+#### Spotify Track Search
+Search for songs on Spotify to enable music playback.
+
+```http
+POST /api/spotify/search
+Content-Type: application/json
+
+{
+  "artist": "Queen",
+  "title": "Bohemian Rhapsody"
+}
+```
+
+**Response:**
+```json
+{
+  "track": {
+    "id": "2CtemffYhT0DJWcT1XW047",
+    "name": "Bohemian Rhapsody (Remastered)",
+    "artist": "Queen",
+    "preview_url": "https://p.scdn.co/mp3-preview/...",
+    "external_url": "https://open.spotify.com/track/2CtemffYhT0DJWcT1XW047",
+    "image_url": "https://i.scdn.co/image/ab67616d0000b273..."
+  },
+  "found": true
 }
 ```
 
@@ -279,6 +315,9 @@ OPENAI_API_KEY=sk-proj-your-openai-api-key-here
 # Genius API Configuration
 GENIUS_API_TOKEN=your-genius-api-token-here
 
+# Spotify API Configuration
+SPOTIFY_API_TOKEN=your-spotify-api-token-here
+
 # Optional: Custom base URLs
 AI_BASE_URL=http://localhost:8000
 ```
@@ -296,6 +335,12 @@ AI_BASE_URL=http://localhost:8000
 2. Create a new API client
 3. Generate an access token
 4. Copy the Client Access Token
+
+#### Spotify API Token
+1. Visit [Spotify for Developers](https://developer.spotify.com/dashboard)
+2. Create an app and get your Client ID and Client Secret
+3. Use the Client Credentials flow to get an access token
+4. Copy the access token (Note: Tokens expire, you may need to refresh)
 
 ## 🐳 Docker Configuration
 
@@ -372,6 +417,31 @@ Watch your song analysis happen in real-time with our animated progress bar:
 - **Professional progress indicators** similar to modern web apps
 - **Demo mode** with instant progress simulation
 
+## 🎵 Music Player Integration
+
+### Spotify Functionality
+Experience your analyzed songs with seamless music integration:
+
+#### 🎧 **Music Player Features**
+- **Album Artwork** - High-resolution images from Spotify
+- **Track Information** - Song name, artist, and metadata
+- **Direct Spotify Links** - Opens songs in Spotify app or web player
+- **Audio Previews** - 30-second song previews when available
+- **Responsive Design** - Works perfectly on desktop and mobile
+
+#### 🔄 **Automatic Integration**
+- **Smart Search** - Automatically searches Spotify when analyzing songs
+- **Cached Results** - Spotify data cached for 7 days for faster loading
+- **Error Handling** - Graceful fallback when songs aren't found
+- **No Interruption** - Music search runs in parallel with lyrics analysis
+
+#### 🎮 **User Experience**
+1. **Search for lyrics** using any button (Summarize, Generate, Both)
+2. **Music player appears** below the analysis results
+3. **Click album artwork** or song info to see details
+4. **Use "🎧 Open in Spotify"** to play the full song
+5. **Preview audio** directly in browser (when available)
+
 ## 💰 Cost Analysis & Optimization
 
 ### API Cost Breakdown
@@ -413,7 +483,7 @@ curl -X POST http://localhost:8080/api/summarize \
   -H "Content-Type: application/json" \
   -d '{"artist": "Queen", "title": "Bohemian Rhapsody", "language": "en"}'
 ```
-**Cost**: ~$0.001 • **Result**: Detailed meaning analysis
+**Cost**: ~$0.001 • **Result**: Detailed meaning analysis + Spotify music player
 
 ### Scenario 2: Artwork Focus
 You already know the song but want stunning AI artwork:
@@ -425,7 +495,7 @@ curl -X POST http://localhost:8080/api/generate \
   -H "Content-Type: application/json" \
   -d '{"artist": "Queen", "title": "Bohemian Rhapsody", "style": "psychedelic"}'
 ```
-**Cost**: ~$0.041 • **Result**: High-quality AI artwork
+**Cost**: ~$0.041 • **Result**: High-quality AI artwork + Spotify music player
 
 ### Scenario 3: Complete Experience
 Full analysis + artwork for your favorite songs:
@@ -437,7 +507,7 @@ curl -X POST http://localhost:8080/api/analyze \
   -H "Content-Type: application/json" \
   -d '{"artist": "Queen", "title": "Bohemian Rhapsody", "style": "vintage", "language": "en"}'
 ```
-**Cost**: ~$0.041 • **Result**: Summary + artwork
+**Cost**: ~$0.041 • **Result**: Summary + artwork + Spotify music player
 
 ## 📊 Performance
 
@@ -463,6 +533,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **OpenAI** for GPT-4o-mini and DALL-E 3 APIs
 - **Genius** for lyrics data
+- **Spotify** for music streaming integration and Web API
 - **Spring Boot & FastAPI** communities
 - **Docker** for containerization
 

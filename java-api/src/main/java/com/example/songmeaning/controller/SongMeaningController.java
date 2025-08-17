@@ -39,6 +39,11 @@ public class SongMeaningController {
     return ResponseEntity.ok(client.generate(req));
   }
 
+  @PostMapping("/spotify/search")
+  public ResponseEntity<?> spotifySearch(@Valid @RequestBody SongRequest req){
+    return ResponseEntity.ok(client.spotifySearch(req));
+  }
+
   @GetMapping(value = "/progress/{requestId}", produces = "text/event-stream")
   public void progressStream(@PathVariable String requestId, HttpServletResponse response) throws IOException {
     // Proxy the SSE stream from Python service

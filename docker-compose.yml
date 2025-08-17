@@ -18,6 +18,7 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GENIUS_API_TOKEN=${GENIUS_API_TOKEN:-}
+      - SPOTIFY_API_TOKEN=${SPOTIFY_API_TOKEN:-}
       - REDIS_URL=redis://redis:6379/0
     ports:
       - "8000:8000"
